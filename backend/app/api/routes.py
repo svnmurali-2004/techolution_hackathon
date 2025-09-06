@@ -37,6 +37,14 @@ router.include_router(
     tags=["reports"]
 )
 
+# Include the agent router
+from app.api.endpoints import agent
+router.include_router(
+    agent.router,
+    prefix="/agent",
+    tags=["agent"]
+)
+
 @router.post('/upload')
 async def upload_file(file: UploadFile = File(...), source_id: Optional[str] = Form(None)):
     """Upload a file and get source_id for future reference"""
