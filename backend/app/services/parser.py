@@ -5,9 +5,11 @@ import pytesseract
 from typing import Any
 import os
 import tempfile
-from chromadb import Client
+from chromadb import PersistentClient
 
-vector_db = Client()
+# Use the same ChromaDB setup as the generator
+CHROMA_PATH = "./chromadb_reports"
+vector_db = PersistentClient(path=CHROMA_PATH)
 
 def extract_pdf(file_path):
     doc = fitz.open(file_path)
@@ -56,18 +58,24 @@ async def parse_file(file) -> dict:
     else:
         data = [{"error": "Unsupported file type"}]
     os.remove(tmp_path)
-    # Store in vector DB
+    # Store in vector DB using the same collection as generator
     import uuid
-    collection = vector_db.get_or_create_collection("documents")
-    # Batch add documents to avoid timeouts
-    batch_size = 10
-    docs = [str(item)[:1000] for item in data]  # Truncate to 1000 chars to avoid large payloads
-    metas = [{"filename": file.filename} for _ in data]
-    ids = [str(uuid.uuid4()) for _ in data]
-    for i in range(0, len(docs), batch_size):
-        collection.add(
-            documents=docs[i:i+batch_size],
-            metadatas=metas[i:i+batch_size],
-            ids=ids[i:i+batch_size]
-        )
-    return {"status": "parsed", "filename": file.filename, "data": data}
+    collection = vector_db.get_or_create_collection("reports")
+    
+    # Process and store the extracted data properly
+    ingested_chunks = []
+    for item in data:
+        if 'text' in item and item['text'].strip():
+            # Use the generator's ingest_documents function for consistency
+            from app.services.generator import ingest_documents
+            source_id = f"uploaded_{file.filename}_{str(uuid.uuid4())[:8]}"
+            chunk_ids, _ = ingest_documents([item['text']], source_id=source_id)
+            ingested_chunks.extend(chunk_ids)
+    
+    return {
+        "status": "parsed", 
+        "filename": file.filename, 
+        "data": data,
+        "ingested_chunks": len(ingested_chunks),
+        "message": f"Successfully ingested {len(ingested_chunks)} chunks from {file.filename}"
+    }

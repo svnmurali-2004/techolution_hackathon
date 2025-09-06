@@ -42,10 +42,18 @@ async def generate_report(request: ReportRequest):
             top_k=request.top_k,
             source_filter=request.source_filter
         )
+        
+        # Check if there was an error in the result
+        if "error" in result:
+            raise HTTPException(status_code=400, detail=result["error"])
+        
         return {
             "report_id": result["report_id"],
             "status": "generated"
         }
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Report generation failed: {str(e)}")
 
@@ -71,13 +79,38 @@ async def export_report_endpoint(request: ExportRequest):
     """
     try:
         result = export_report(request.report_id, request.format)
+        if "error" in result:
+            raise HTTPException(status_code=400, detail=result["error"])
         return {
             "report_id": request.report_id,
             "format": request.format,
-            "file_path": result["file_path"]
+            "file": result.get("file", ""),
+            "status": "success"
         }
     except KeyError:
         raise HTTPException(status_code=404, detail=f"Report with ID {request.report_id} not found")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Export failed: {str(e)}")
+
+@router.get("/export")
+async def export_report_get(report_id: str, format: str = "pdf"):
+    """
+    Export a report to the specified format (GET endpoint)
+    """
+    try:
+        result = export_report(report_id, format)
+        if "error" in result:
+            raise HTTPException(status_code=400, detail=result["error"])
+        return {
+            "report_id": report_id,
+            "format": format,
+            "file": result.get("file", ""),
+            "status": "success"
+        }
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Report with ID {report_id} not found")
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:

@@ -16,7 +16,27 @@ collection = chroma_client.get_or_create_collection("reports")
 # 2. Embedding Model
 embedder = SentenceTransformer("all-MiniLM-L6-v2")
 
-# 3. Document Ingestion
+# 3. Collection Diagnostics
+def diagnose_collection():
+    """Get collection status and document count"""
+    try:
+        count = collection.count()
+        return {
+            "collection_name": "reports",
+            "document_count": count,
+            "healthy": True,
+            "chroma_path": CHROMA_PATH
+        }
+    except Exception as e:
+        return {
+            "collection_name": "reports", 
+            "document_count": 0,
+            "healthy": False,
+            "error": str(e),
+            "chroma_path": CHROMA_PATH
+        }
+
+# 4. Document Ingestion
 def ingest_documents(docs, source_id):
     chunk_size = 300
     ingested_ids = []
@@ -64,24 +84,27 @@ def ingest_documents(docs, source_id):
 
 # 4. Querying with Citations
 def generate_report_from_query(sections, query, top_k=5, source_filter=None):
-    # Check if collection is empty and seed if needed
+    # Check if collection is empty and warn user instead of auto-seeding
     if collection.count() == 0:
-        print("WARNING: ChromaDB collection is empty. Adding test data...")
-        seed_test_data()
+        print("WARNING: ChromaDB collection is empty. Please upload documents first.")
+        return {
+            "error": "No documents found in the system. Please upload documents before generating reports.",
+            "suggestion": "Use the /upload endpoint to add documents to the system."
+        }
     
     # Log source filtering if applied
     if source_filter:
         print(f"Filtering query results to source: {source_filter}")
     
-    # Create section-specific queries to increase diversity
+    # Create section-specific queries based on the user's actual query
     section_specific_queries = {
-        "Executive Summary": f"{query} overview market trends",
-        "Key Findings": f"{query} detailed analysis results data",
-        "Recommendations": f"{query} strategies solutions improvements",
-        "Market Analysis": f"{query} market statistics competition",
-        "Challenges": f"{query} obstacles problems difficulties",
-        "Future Outlook": f"{query} predictions future trends forecast",
-        "Introduction": f"{query} background context introduction",
+        "Executive Summary": f"{query} summary overview",
+        "Key Findings": f"{query} findings results analysis",
+        "Recommendations": f"{query} recommendations suggestions",
+        "Market Analysis": f"{query} market analysis",
+        "Challenges": f"{query} challenges problems",
+        "Future Outlook": f"{query} future outlook predictions",
+        "Introduction": f"{query} introduction background",
     }
     
     # Store all results for each section
@@ -311,19 +334,44 @@ def generate_report_from_query(sections, query, top_k=5, source_filter=None):
             # Use section-specific evidence 
             section_docs = section_evidence.get(section, all_evidence)
             
-            # Create a more directed prompt for this section
+            # Create a more directed prompt for this section with enterprise-grade citation requirements
+            # Ensure unique citations by tracking used combinations
+            unique_citations = set()
+            evidence_with_unique_ids = []
+            
+            for i, e in enumerate(section_docs):
+                citation_key = f"{e['source_id']}:{e['page']}"
+                if citation_key not in unique_citations:
+                    unique_citations.add(citation_key)
+                    evidence_with_unique_ids.append({
+                        "id": len(evidence_with_unique_ids) + 1,
+                        "source_id": e["source_id"],
+                        "page": e["page"],
+                        "content": e["document"] if isinstance(e["document"], str) and e["document"].strip() else e["snippet"],
+                        "metadata": {
+                            "source_type": "uploaded_document",
+                            "confidence": "high" if len(e.get("document", "")) > 100 else "medium",
+                            "unique_id": len(evidence_with_unique_ids) + 1
+                        }
+                    })
+            
             prompt = (
-                f"Write the section '{section}' for a business report based on the following evidence. "
-                f"For every fact or claim you include, cite the specific source using the exact format [SOURCE_ID:PAGE_NUMBER] (e.g., [doc_market:1]). "
-                f"Make sure each citation directly corresponds to content from that specific source. "
-                f"Use as many different sources as possible to create a well-rounded analysis. "
-                f"Format the section with a clear heading, well-structured paragraphs, and bullet points where appropriate.\n\n"
-                f"Evidence:\n" + json.dumps([{
-                    "id": i,
-                    "source_id": e["source_id"],
-                    "page": e["page"],
-                    "content": e["document"] if isinstance(e["document"], str) and e["document"].strip() else e["snippet"]
-                } for i, e in enumerate(section_docs)], indent=2)
+                f"Write the section '{section}' for a professional report based on the following evidence from uploaded documents. "
+                f"CRITICAL CITATION REQUIREMENTS:\n"
+                f"1. For every fact, claim, statistic, or statement you include, cite the specific source using the exact format [SOURCE_ID:PAGE_NUMBER]\n"
+                f"2. Use the exact source_id and page number from the evidence provided\n"
+                f"3. Each citation must directly correspond to content from that specific source\n"
+                f"4. Do not add external knowledge, assumptions, or information not in the evidence\n"
+                f"5. Use DIFFERENT citations throughout the section - avoid repeating the same citation multiple times\n"
+                f"6. Format citations as [source_id:page] (e.g., [uploaded_document_abc123:1])\n"
+                f"7. Vary your citations - use different sources and pages when possible\n\n"
+                f"WRITING REQUIREMENTS:\n"
+                f"- Use professional, analytical tone\n"
+                f"- Structure with clear paragraphs and bullet points\n"
+                f"- Include specific data points and metrics when available\n"
+                f"- Maintain objectivity and evidence-based analysis\n"
+                f"- Use diverse citations to show comprehensive analysis\n\n"
+                f"Evidence from uploaded documents (use different citations throughout):\n" + json.dumps(evidence_with_unique_ids, indent=2)
             )
             
             llm_response = llm.invoke(prompt)
@@ -496,10 +544,10 @@ def preview(report_id):
     In a production system, this would fetch from a database.
     """
     try:
-        # Check if collection is empty and seed if needed
+        # Check if collection is empty and warn user
         if collection.count() == 0:
-            print("WARNING: ChromaDB collection is empty. Adding test data...")
-            seed_test_data()
+            print("WARNING: ChromaDB collection is empty. Please upload documents first.")
+            return {"error": "No documents found in the system. Please upload documents before generating reports."}
         
         if report_id in report_cache:
             # Make a copy of the report to avoid modifying the cache
@@ -520,6 +568,55 @@ def preview(report_id):
     except Exception as e:
         print(f"Error retrieving preview: {e}")
         return {"error": "Failed to retrieve preview"}
+
+# Function to get available document sources
+def get_available_sources():
+    try:
+        # Get all items from collection
+        results = collection.get()
+        
+        # Extract unique source_ids from metadata
+        sources = {} 
+        if results and 'metadatas' in results and results['metadatas']:
+            for metadata in results['metadatas']:
+                if metadata and 'source_id' in metadata:
+                    source_id = metadata['source_id']
+                    if source_id not in sources:
+                        sources[source_id] = 0
+                    sources[source_id] += 1
+        
+        # Format the result
+        sources_list = [{"source_id": source_id, "count": count} for source_id, count in sources.items()]
+        return {"sources": sources_list}
+    except Exception as e:
+        print(f"Error getting available sources: {e}")
+        return {"sources": [], "error": str(e)}
+
+# Function to reset the collection (delete all documents)
+def reset_collection():
+    """
+    Reset the ChromaDB collection by deleting all documents.
+    Use with caution as this will delete all ingested documents.
+    """
+    try:
+        # Delete the collection and recreate it
+        chroma_client.delete_collection("reports")
+        global collection
+        collection = chroma_client.get_or_create_collection("reports")
+        
+        # Clear the report cache as well
+        global report_cache
+        report_cache.clear()
+        
+        print("Collection has been reset. All documents and reports have been deleted.")
+        return {
+            "status": "success", 
+            "message": "Collection reset successfully",
+            "document_count": 0
+        }
+    except Exception as e:
+        print(f"Error resetting collection: {e}")
+        return {"error": str(e)}
 
 # 5. Main Flow Example (for testing)
 if __name__ == "__main__":
@@ -583,3 +680,34 @@ if __name__ == "__main__":
         print(json.dumps(preview_result, indent=2))
     except Exception as e:
         print(f"Error in main execution: {e}")
+
+# Function to get sample content from documents for template analysis
+def get_document_samples_for_analysis(limit=3):
+    """
+    Get sample content from uploaded documents to help with template analysis
+    """
+    try:
+        # Get a few sample documents from the collection
+        results = collection.get(limit=limit)
+        
+        if not results or not results.get('documents'):
+            return {"samples": [], "message": "No documents available for analysis"}
+        
+        samples = []
+        for i, doc in enumerate(results['documents'][:limit]):
+            if doc and len(doc.strip()) > 50:  # Only include substantial content
+                samples.append({
+                    "id": i + 1,
+                    "content_preview": doc[:200] + "..." if len(doc) > 200 else doc,
+                    "source_id": results['metadatas'][i].get('source_id', 'Unknown') if results.get('metadatas') else 'Unknown',
+                    "length": len(doc)
+                })
+        
+        return {
+            "samples": samples,
+            "total_documents": collection.count(),
+            "message": f"Analyzed {len(samples)} document samples"
+        }
+    except Exception as e:
+        print(f"Error getting document samples: {e}")
+        return {"samples": [], "error": str(e)}

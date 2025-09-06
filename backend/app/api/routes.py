@@ -1,30 +1,114 @@
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
+from typing import Optional, List, Dict
 
 from app.services import parser, template, generator, export
 from pydantic import BaseModel
+from app.api import templates
 
 class GenerateRequest(BaseModel):
-	template_id: str
-	query: str
+    template_id: Optional[str] = None
+    query: str
+    sections: Optional[List[str]] = None
+    source_filter: Optional[str] = None
+    top_k: Optional[int] = 5
 
 router = APIRouter()
 
-@router.post('/upload')
-async def upload_file(file: UploadFile = File(...)):
-	return await parser.parse_file(file)
+# Include the templates router
+router.include_router(
+    templates.router,
+    prefix="/templates",
+    tags=["templates"]
+)
 
+# Include the documents router
+from app.api.endpoints import documents
+router.include_router(
+    documents.router,
+    prefix="/documents",
+    tags=["documents"]
+)
+
+# Include the reports router
+from app.api.endpoints import reports
+router.include_router(
+    reports.router,
+    prefix="/reports",
+    tags=["reports"]
+)
+
+@router.post('/upload')
+async def upload_file(file: UploadFile = File(...), source_id: Optional[str] = Form(None)):
+    """Upload a file and get source_id for future reference"""
+    # Use the documents endpoint for proper document handling
+    from app.api.endpoints.documents import upload_document
+    return await upload_document(file, source_id)
+
+@router.get('/sources')
+async def get_available_sources():
+    """Get list of available document sources for filtering"""
+    return generator.get_available_sources()
+
+# Add direct routes for backward compatibility with existing frontend
 @router.get('/templates')
-def get_templates():
-	return template.list_templates()
+async def get_templates_compat():
+    """Backward compatibility route for listing templates"""
+    return template.list_templates()
 
 @router.post('/templates')
-def create_template(template_json: dict):
-	return template.create_template(template_json)
+async def create_template_compat(template_json: dict):
+    """Backward compatibility route for creating templates"""
+    return template.create_template(template_json)
+
+@router.post('/templates/suggest')
+async def suggest_template_compat(request: dict):
+    """Backward compatibility route for suggesting templates"""
+    return template.suggest_template(
+        query=request.get("query", ""),
+        source_context=request.get("source_context"),
+        available_sources=request.get("available_sources"),
+        chat_history=request.get("chat_history")
+    )
+
+@router.post('/templates/chat')
+async def chat_template_compat(request: dict):
+    """Backward compatibility route for template chat interface"""
+    # Forward to the new templates router chat endpoint
+    from app.api.templates import chat_template
+    return chat_template(
+        message=request.get("message", ""),
+        template_id=request.get("template_id"),
+        chat_history=request.get("chat_history")
+    )
+
+# Templates routes have also been moved to app/api/templates.py and are included above
 
 @router.post('/generate')
-def generate_report(req: GenerateRequest):
-	sections = ["Executive Summary", "Key Findings", "Recommendations"]
-	return generator.generate_report_from_query(sections, req.query, top_k=3)
+async def generate_report(req: GenerateRequest):
+    """Generate a report using either provided sections or a template_id"""
+    # If sections are provided directly, use them
+    if req.sections:
+        sections = req.sections
+    # Otherwise if template_id is provided, fetch sections from template
+    elif req.template_id:
+        templates_list = template.list_templates()
+        template_obj = next((t for t in templates_list if t.get("id") == req.template_id), None)
+        if template_obj:
+            sections = template_obj.get("template", ["Executive Summary", "Key Findings", "Recommendations"])
+        else:
+            # Default sections if template not found
+            sections = ["Executive Summary", "Key Findings", "Recommendations"]
+    else:
+        # Default sections if neither sections nor template_id provided
+        sections = ["Executive Summary", "Key Findings", "Recommendations"]
+    
+    # Generate report with source filtering to ensure we use only uploaded content
+    return generator.generate_report_from_query(
+        sections=sections, 
+        query=req.query, 
+        top_k=req.top_k,
+        source_filter=req.source_filter
+    )
 
 @router.get('/preview/{report_id}')
 def preview_report(report_id: str):

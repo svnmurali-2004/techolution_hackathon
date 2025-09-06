@@ -32,24 +32,19 @@ async def upload_document(
         # Check file extension
         file_ext = file.filename.lower().split('.')[-1] if '.' in file.filename else ''
         
-        # Process based on file type
-        if file_ext == 'pdf':
+        # Process based on file type using the unified parser
+        if file_ext in ['pdf', 'pptx', 'ppt', 'xlsx', 'xls', 'txt', 'png', 'jpg', 'jpeg']:
             from app.services.parser import parse_file
-            # Use the existing parser for PDF files
+            # Use the updated parser that handles all file types
             parsed_data = await parse_file(file)
-            # Extract text from parsed data
-            text_contents = [item.get('text', '') for item in parsed_data if 'text' in item]
             
             # Log the extraction process
-            print(f"Extracted {len(text_contents)} text segments from PDF")
-            print(f"First segment preview: {text_contents[0][:100]}..." if text_contents else "No text extracted")
+            print(f"Parsed file: {file.filename}")
+            print(f"Extracted data: {parsed_data.get('message', 'No message')}")
             
-            # Ingest each text segment with a consistent parent source_id
-            # This will allow filtering by this parent source ID
-            for i, text in enumerate(text_contents):
-                if text.strip():  # Skip empty text
-                    page_source_id = f"{source_id}_page{i+1}"
-                    ingest_documents([text], source_id=source_id)
+            # The parser now handles ingestion internally, so we just need to verify
+            if parsed_data.get('status') != 'parsed':
+                raise HTTPException(status_code=400, detail=f"Failed to parse file: {parsed_data.get('error', 'Unknown error')}")
         else:
             # Handle plain text files as before
             content = await file.read()
@@ -77,10 +72,40 @@ async def upload_document(
 @router.get("/status")
 async def get_collection_status():
     """
-    Get the status of the document collection
+    Get the status of the document collection with sources information
     """
     try:
+        from app.services.generator import collection
         status = diagnose_collection()
+        
+        # Get unique source IDs from the collection
+        try:
+            # Get all documents to extract unique source IDs
+            all_docs = collection.get()
+            source_ids = set()
+            if all_docs and 'metadatas' in all_docs:
+                for metadata in all_docs['metadatas']:
+                    if metadata and 'source_id' in metadata:
+                        source_ids.add(metadata['source_id'])
+            
+            # Create sources array
+            sources = []
+            for source_id in source_ids:
+                # Count documents for this source
+                source_docs = collection.get(where={"source_id": source_id})
+                count = len(source_docs['ids']) if source_docs and 'ids' in source_docs else 0
+                sources.append({
+                    "source_id": source_id,
+                    "count": count
+                })
+            
+            # Add sources to status
+            status["sources"] = sources
+            
+        except Exception as e:
+            print(f"Error getting sources: {e}")
+            status["sources"] = []
+        
         return status
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get collection status: {str(e)}")
@@ -109,3 +134,131 @@ async def reset_collection():
         return {"status": "success", "message": "Collection has been reset", "details": result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to reset collection: {str(e)}")
+
+@router.get("/samples")
+async def get_document_samples():
+    """
+    Get sample content from uploaded documents for template analysis
+    """
+    try:
+        from app.services.generator import get_document_samples_for_analysis
+        samples = get_document_samples_for_analysis()
+        return samples
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get document samples: {str(e)}")
+
+@router.post("/session/start")
+async def start_new_session():
+    """
+    Start a new chat session by clearing all previous documents
+    """
+    try:
+        from app.services.generator import reset_collection
+        result = reset_collection()
+        return {
+            "status": "success", 
+            "message": "New session started - all previous documents cleared",
+            "session_id": str(uuid.uuid4()),
+            "details": result
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to start new session: {str(e)}")
+
+@router.get("/session/current")
+async def get_current_session_documents():
+    """
+    Get only the documents from the current session (all documents since last reset)
+    """
+    try:
+        from app.services.generator import collection, diagnose_collection
+        status = diagnose_collection()
+        
+        # Get all documents from current session
+        all_docs = collection.get()
+        current_documents = []
+        
+        if all_docs and 'metadatas' in all_docs and 'documents' in all_docs:
+            for i, metadata in enumerate(all_docs['metadatas']):
+                if metadata and 'source_id' in metadata:
+                    current_documents.append({
+                        "source_id": metadata['source_id'],
+                        "content": all_docs['documents'][i] if i < len(all_docs['documents']) else "",
+                        "page": metadata.get('page', 1)
+                    })
+        
+        return {
+            "session_documents": current_documents,
+            "total_count": len(current_documents),
+            "status": status
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get current session documents: {str(e)}")
+
+@router.post("/analyze")
+async def analyze_documents():
+    """
+    Analyze uploaded documents and provide a summary
+    """
+    try:
+        from app.services.generator import collection, diagnose_collection, get_document_samples_for_analysis
+        import os
+        from langchain_google_genai import ChatGoogleGenerativeAI
+        
+        # Get document status and samples
+        status = diagnose_collection()
+        samples_data = get_document_samples_for_analysis()
+        
+        if status.get("document_count", 0) == 0:
+            return {
+                "analysis": "No documents found. Please upload documents first.",
+                "document_count": 0
+            }
+        
+        # Set up Gemini LLM
+        os.environ["GOOGLE_API_KEY"] = "AIzaSyB_Nqb1kP6NJ0PsfYONs4VxQWsjywc30Rs"
+        llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.7)
+        
+        # Create analysis prompt
+        document_count = status.get("document_count", 0)
+        samples = samples_data.get("samples", [])
+        
+        prompt = f"""
+        You are an expert document analyst. I have uploaded {document_count} document(s) and need you to analyze them.
+        
+        Here are sample contents from the documents:
+        """
+        
+        for i, sample in enumerate(samples[:3], 1):
+            content = sample.get('content_preview', str(sample))
+            prompt += f"\nDocument {i} Sample:\n{content}\n"
+        
+        prompt += f"""
+        
+        Please provide a comprehensive analysis including:
+        1. **Document Overview** - What types of documents these appear to be
+        2. **Key Topics** - Main subjects and themes covered
+        3. **Content Quality** - Assessment of the information quality
+        4. **Report Recommendations** - What type of report would best suit this content
+        5. **Template Suggestions** - Which report template would work best
+        
+        Be specific and reference the actual content you can see.
+        """
+        
+        # Generate analysis
+        response = llm.invoke(prompt)
+        analysis = response.content if hasattr(response, "content") else str(response)
+        
+        return {
+            "analysis": analysis,
+            "document_count": document_count,
+            "samples_analyzed": len(samples),
+            "status": "success"
+        }
+        
+    except Exception as e:
+        print(f"Error in document analysis: {e}")
+        return {
+            "analysis": f"Error analyzing documents: {str(e)}",
+            "document_count": 0,
+            "error": str(e)
+        }
