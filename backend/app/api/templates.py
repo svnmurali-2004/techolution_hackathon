@@ -105,7 +105,7 @@ def chat_template(
     
     try:
         # Set up Gemini LLM
-        os.environ["GOOGLE_API_KEY"] = "AIzaSyDGA_bxmpmbC7NkEaY97GQoZDUtS1N1nLA"
+        os.environ["GOOGLE_API_KEY"] = "AIzaSyAkQBm7Flsbd6YlAgNzvvVIs3hbtMRDjsg"
         from langchain_google_genai import ChatGoogleGenerativeAI
         llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.7)
         

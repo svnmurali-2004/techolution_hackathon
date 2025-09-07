@@ -21,7 +21,7 @@ from app.services.generator import collection, diagnose_collection, get_document
 # -----------------------------
 # Configuration
 # -----------------------------
-os.environ["GOOGLE_API_KEY"] = "AIzaSyDGA_bxmpmbC7NkEaY97GQoZDUtS1N1nLA"
+os.environ["GOOGLE_API_KEY"] = "AIzaSyAkQBm7Flsbd6YlAgNzvvVIs3hbtMRDjsg"
 
 router = APIRouter()
 
@@ -62,13 +62,22 @@ class AgenticAISystem:
     def process_documents(self, input_text: str = "") -> str:
         """Process uploaded documents and create searchable vector store."""
         try:
-            status = diagnose_collection()
-            doc_count = status.get("document_count", 0)
+            # First check if collection exists and is accessible
+            try:
+                status = diagnose_collection()
+                doc_count = status.get("document_count", 0)
+            except Exception as e:
+                return f"Error accessing document collection: {str(e)}. Please try uploading documents again or restart the server."
             
             if doc_count == 0:
                 return "No documents found. Please upload documents first."
             
-            all_docs = collection.get()
+            # Try to get documents from collection
+            try:
+                all_docs = collection.get()
+            except Exception as e:
+                return f"Error retrieving documents from collection: {str(e)}. The collection may have been corrupted. Please try uploading documents again."
+            
             if not all_docs or not all_docs.get('documents'):
                 return "No document content found in collection."
             

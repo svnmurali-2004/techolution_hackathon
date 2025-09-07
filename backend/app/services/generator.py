@@ -11,7 +11,21 @@ import json
 # 1. Setup ChromaDB (persistent)
 CHROMA_PATH = "./chromadb_reports"
 chroma_client = PersistentClient(path=CHROMA_PATH)
-collection = chroma_client.get_or_create_collection("reports")
+
+# Ensure collection exists and is properly initialized
+try:
+    collection = chroma_client.get_or_create_collection("reports")
+    print(f"✅ ChromaDB collection 'reports' initialized successfully")
+except Exception as e:
+    print(f"❌ Error initializing ChromaDB collection: {e}")
+    # Try to create a new collection
+    try:
+        chroma_client.delete_collection("reports")
+        collection = chroma_client.create_collection("reports")
+        print(f"✅ ChromaDB collection 'reports' recreated successfully")
+    except Exception as e2:
+        print(f"❌ Failed to recreate collection: {e2}")
+        raise e2
 
 # 2. Embedding Model
 embedder = SentenceTransformer("all-MiniLM-L6-v2")
@@ -323,7 +337,7 @@ def generate_report_from_query(sections, query, top_k=5, source_filter=None):
     print(f"Total unique evidence items: {len(all_evidence)}")
     
     # Setup Gemini LLM
-    os.environ["GOOGLE_API_KEY"] = "AIzaSyDGA_bxmpmbC7NkEaY97GQoZDUtS1N1nLA"  # Replace with your actual key or use env
+    os.environ["GOOGLE_API_KEY"] = "AIzaSyAkQBm7Flsbd6YlAgNzvvVIs3hbtMRDjsg"  # Replace with your actual key or use env
     
     # Generate report sections
     report_sections = []
@@ -433,33 +447,6 @@ def diagnose_collection():
         return {"error": str(e)}
 
 # Function to reset the collection
-def reset_collection():
-    """
-    Delete all documents from the collection and reset to empty state
-    """
-    try:
-        # Get the current count for reporting
-        count_before = collection.count()
-        
-        # Delete all documents
-        if count_before > 0:
-            # Get all document IDs
-            results = collection.get(include=['documents', 'metadatas'])
-            if 'ids' in results and results['ids']:
-                # Delete all documents by their IDs
-                collection.delete(ids=results['ids'])
-        
-        # Verify deletion
-        count_after = collection.count()
-        
-        return {
-            "documents_removed": count_before,
-            "documents_remaining": count_after,
-            "success": count_after == 0
-        }
-    except Exception as e:
-        print(f"Error resetting collection: {e}")
-        return {"error": str(e)}
         
 # Function to get documents by source ID
 def get_documents_by_source(source_id):
@@ -622,6 +609,36 @@ def reset_collection():
         }
     except Exception as e:
         print(f"Error resetting collection: {e}")
+        return {"error": str(e)}
+
+# Function to recreate collection if corrupted
+def recreate_collection():
+    """
+    Recreate the ChromaDB collection if it's corrupted or inaccessible.
+    """
+    try:
+        global collection
+        # Try to delete existing collection
+        try:
+            chroma_client.delete_collection("reports")
+        except:
+            pass  # Collection might not exist
+        
+        # Create new collection
+        collection = chroma_client.create_collection("reports")
+        
+        # Clear the report cache
+        global report_cache
+        report_cache.clear()
+        
+        print("✅ Collection recreated successfully")
+        return {
+            "status": "success", 
+            "message": "Collection recreated successfully",
+            "document_count": 0
+        }
+    except Exception as e:
+        print(f"❌ Error recreating collection: {e}")
         return {"error": str(e)}
 
 # 5. Main Flow Example (for testing)

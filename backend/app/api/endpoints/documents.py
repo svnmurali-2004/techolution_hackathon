@@ -210,6 +210,22 @@ async def start_new_session():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to start new session: {str(e)}")
 
+@router.post("/collection/recreate")
+async def recreate_collection():
+    """
+    Recreate the ChromaDB collection if it's corrupted or inaccessible
+    """
+    try:
+        from app.services.generator import recreate_collection
+        result = recreate_collection()
+        return {
+            "status": "success", 
+            "message": "Collection recreated successfully",
+            "details": result
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to recreate collection: {str(e)}")
+
 @router.get("/session/current")
 async def get_current_session_documents():
     """
@@ -261,7 +277,7 @@ async def analyze_documents():
             }
         
         # Set up Gemini LLM
-        os.environ["GOOGLE_API_KEY"] = "AIzaSyDGA_bxmpmbC7NkEaY97GQoZDUtS1N1nLA"
+        os.environ["GOOGLE_API_KEY"] = "AIzaSyAkQBm7Flsbd6YlAgNzvvVIs3hbtMRDjsg"
         llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.7)
         
         # Create analysis prompt

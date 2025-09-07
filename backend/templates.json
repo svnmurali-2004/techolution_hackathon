@@ -1,0 +1,117 @@
+[
+  {
+    "id": "default",
+    "name": "Default Template",
+    "description": "Basic report template with essential sections",
+    "template": [
+      "Executive Summary",
+      "Introduction",
+      "Key Insights",
+      "Recommendations"
+    ],
+    "category": "General",
+    "created_at": "2024-01-01T00:00:00Z"
+  },
+  {
+    "id": "business_report",
+    "name": "Business Report Template",
+    "description": "Standard business report with executive summary and recommendations",
+    "template": [
+      "Executive Summary",
+      "Introduction",
+      "Key Findings",
+      "Recommendations",
+      "Conclusion"
+    ],
+    "category": "Business",
+    "created_at": "2024-01-01T00:00:00Z"
+  },
+  {
+    "id": "market_analysis",
+    "name": "Market Analysis Template",
+    "description": "Comprehensive market analysis with competitive insights",
+    "template": [
+      "Executive Summary",
+      "Market Overview",
+      "Competitive Analysis",
+      "Trends",
+      "Recommendations"
+    ],
+    "category": "Market Research",
+    "created_at": "2024-01-01T00:00:00Z"
+  },
+  {
+    "id": "financial_report",
+    "name": "Financial Report Template",
+    "description": "Financial analysis and performance review template",
+    "template": [
+      "Executive Summary",
+      "Financial Overview",
+      "Performance Analysis",
+      "Risk Assessment",
+      "Financial Projections",
+      "Recommendations"
+    ],
+    "category": "Finance",
+    "created_at": "2024-01-01T00:00:00Z"
+  },
+  {
+    "id": "research_report",
+    "name": "Research Report Template",
+    "description": "Academic and research-focused report structure",
+    "template": [
+      "Abstract",
+      "Introduction",
+      "Methodology",
+      "Findings",
+      "Analysis",
+      "Conclusion",
+      "References"
+    ],
+    "category": "Research",
+    "created_at": "2024-01-01T00:00:00Z"
+  },
+  {
+    "id": "project_status",
+    "name": "Project Status Template",
+    "description": "Project update and status reporting template",
+    "template": [
+      "Project Overview",
+      "Current Status",
+      "Milestones Achieved",
+      "Challenges",
+      "Next Steps",
+      "Resource Requirements"
+    ],
+    "category": "Project Management",
+    "created_at": "2024-01-01T00:00:00Z"
+  },
+  {
+    "name": "General Analysis Report",
+    "description": "A standard template for structured analysis and reports, suitable for consulting and strategic deliverables based on provided sources.",
+    "template": [
+      "Executive Summary",
+      "Context and Motivation",
+      "Problem Statement and Scope",
+      "Analysis and Key Findings",
+      "Recommendations",
+      "Conclusion"
+    ],
+    "category": "Reports",
+    "id": "custom_05fc3d19",
+    "created_at": "2025-09-07T13:32:52.047433Z"
+  },
+  {
+    "id": "custom_8565cd70",
+    "name": "Custom Report Template",
+    "description": "Custom template based on your requirements",
+    "template": [
+      "Executive Summary",
+      "Key Findings",
+      "Analysis",
+      "Recommendations"
+    ],
+    "category": "Custom",
+    "created_at": "9d27186e-b8b3-4600-b58a-8cf4f163b9eb"
+  }
+]

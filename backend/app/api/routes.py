@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Response
 from typing import Optional, List, Dict
 
 from app.services import parser, template, generator, export
@@ -123,5 +123,32 @@ def preview_report(report_id: str):
 	return generator.preview(report_id)
 
 @router.get('/export/{report_id}')
-def export_report(report_id: str, format: str):
-	return export.export_report(report_id, format)
+async def export_report_route(report_id: str, format: str):
+    """
+    Export a report to the specified format (GET endpoint)
+    """
+    try:
+        result = export.export_report(report_id, format)
+        if "error" in result:
+            raise HTTPException(status_code=400, detail=result["error"])
+        
+        # Return the file as a binary response
+        file_data = result.get("file", b"")
+        if not file_data:
+            raise HTTPException(status_code=404, detail="No file data found")
+        
+        # Determine content type based on format
+        content_type = "application/pdf" if format == "pdf" else "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        filename = f"report_{report_id}.{format}"
+        
+        return Response(
+            content=file_data,
+            media_type=content_type,
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Report with ID {report_id} not found")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Export failed: {str(e)}")
