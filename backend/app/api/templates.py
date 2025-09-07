@@ -184,43 +184,16 @@ def chat_template(
         print(f"Document analysis request detected: {wants_document_analysis}")
         print(f"Message: {message.lower()}")
         
-        # Craft enhanced prompt for conversational template refinement
-        prompt = f"""
-        You are an expert AI assistant specializing in creating professional report templates with document analysis capabilities.
-        
-        Previous conversation:
-        {formatted_history}
-        
-        {template_context}
-        
-        {document_context}
-        
-        Respond conversationally to help the user create or refine their report template.
-        
-        IMPORTANT CONTEXT HANDLING:
-        - If the user has selected a template, acknowledge it and show them the template details
-        - If they ask to "show the selected template", display the template information clearly
-        - If they have uploaded documents, analyze what type of content they likely contain and suggest appropriate template structures
-        - If they're asking for changes to the template, suggest specific additions, removals, or rearrangements
-        - If they're asking for a completely new template, engage them to understand their needs and consider their uploaded documents
-        
-        REPORT GENERATION REQUESTS:
-        - If the user wants to generate a report from their uploaded documents, acknowledge this and explain that you'll help them create a comprehensive report
-        - Suggest using one of the available templates or creating a custom template based on their document content
-        - If they say "use your own template" or similar, recommend the most appropriate template from the available options
-        - Always provide clear next steps for report generation
-        
-        DOCUMENT ANALYSIS REQUESTS:
-        - If the user asks about uploaded documents, check documents, or wants a summary, provide detailed analysis of their uploaded content
-        - Use the document context and samples to give specific information about what's in their documents
-        - If they ask "have you checked" or "uploaded docs", confirm you can see their documents and provide a summary
-        - If they ask for a "template" or "summary", show them the document content and suggest appropriate templates
-        
-        CRITICAL: Always use the document context when available. If documents are uploaded, reference their content specifically.
-        Never give generic responses when document context is available.
-        
-        Always maintain a helpful, consultative tone like a professional report writing expert who can see and analyze their documents.
-        """
+        # Craft engaging prompt for conversational template refinement
+        prompt = f"""You are an enthusiastic, curious AI assistant who loves helping create amazing reports. Be engaging, ask thoughtful questions, and show genuine interest in their project.
+
+Previous conversation: {formatted_history}
+{template_context}
+{document_context}
+
+User message: {message}
+
+Respond with curiosity and enthusiasm. Ask engaging questions, suggest interesting possibilities, and show excitement about their project. Be helpful but also curious about their goals and vision. Keep responses conversational but not too long."""
         
         # Generate response
         print(f"Calling LLM with prompt length: {len(prompt)}")
@@ -235,11 +208,11 @@ def chat_template(
             available_templates = list_templates()
             
             if available_templates:
-                template_suggestions = "\n\n**Available Templates for Your Report:**\n"
+                template_suggestions = "\n\nAvailable templates:\n"
                 for template in available_templates[:3]:  # Show top 3 templates
-                    template_suggestions += f"• **{template.get('name', 'Unnamed')}** - {template.get('description', 'No description')}\n"
+                    template_suggestions += f"• {template.get('name', 'Unnamed')}\n"
                 
-                template_suggestions += f"\n**Next Steps:**\n1. Select a template above that best fits your needs\n2. Or ask me to create a custom template based on your document content\n3. Once you choose, I'll generate your report using the uploaded documents"
+                template_suggestions += f"\nChoose a template or ask for a custom one!"
                 
                 content += template_suggestions
         
@@ -265,12 +238,12 @@ def chat_template(
                     content_preview = sample.get('content_preview', str(sample))[:150]
                     analysis += f"• **Sample {i}:** {content_preview}...\n"
             
-            analysis += f"\n**What I can do with your documents:**\n"
-            analysis += f"• Generate a comprehensive report using any template\n"
-            analysis += f"• Create a custom template based on your content\n"
-            analysis += f"• Answer specific questions about your documents\n"
-            analysis += f"• Extract key insights and summaries\n\n"
-            analysis += f"**Ready to proceed!** Just tell me what type of report you'd like to create."
+            analysis += f"\nWhat I can do:\n"
+            analysis += f"• Generate reports\n"
+            analysis += f"• Create custom templates\n"
+            analysis += f"• Answer questions\n"
+            analysis += f"• Extract insights\n\n"
+            analysis += f"Ready! What type of report do you want?"
             
             content += analysis
         
@@ -288,9 +261,9 @@ def chat_template(
         # Enhanced fallback response based on context
         if context and "sources" in context and context["sources"]:
             doc_count = len(context["sources"])
-            fallback = f"I can see you have {doc_count} document(s) uploaded! 📄\n\nI'm here to help you create professional reports from your documents. You can:\n\n• Ask me to **analyze your documents**\n• Request a **document summary**\n• **Generate a report** using a template\n• Ask **specific questions** about your content\n\nWhat would you like me to help you with?"
+            fallback = f"Wow! I can see {doc_count} document(s) uploaded - this is exciting! 📄✨\n\nI'm really curious about what you're working on. I can help you:\n• Dive deep into document analysis\n• Create stunning reports\n• Design custom templates\n• Answer your burning questions\n\nWhat's your vision here? I'm excited to help you bring it to life! 🚀"
         else:
-            fallback = "I'm here to help you create professional reports! You can:\n\n• **Upload documents** to analyze\n• **Design custom templates**\n• **Generate reports** from your content\n• **Refine existing templates**\n\nWhat would you like to do first?"
+            fallback = "Hey there! I'm your enthusiastic report creation partner! 🎉\n\nI'm curious - what kind of amazing project are you working on? I can help you:\n• Upload and analyze documents\n• Generate professional reports\n• Create custom templates\n\nWhat's your goal? I'm excited to help you achieve it! ✨"
         
         chat_history.append({"role": "assistant", "content": fallback})
         

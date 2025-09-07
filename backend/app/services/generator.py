@@ -343,14 +343,20 @@ def generate_report_from_query(sections, query, top_k=5, source_filter=None):
                 citation_key = f"{e['source_id']}:{e['page']}"
                 if citation_key not in unique_citations:
                     unique_citations.add(citation_key)
+                    # Get the best content for citation
+                    citation_content = e.get("snippet", "")
+                    if not citation_content and isinstance(e.get("document"), str):
+                        citation_content = e["document"]
+                    
                     evidence_with_unique_ids.append({
                         "id": len(evidence_with_unique_ids) + 1,
                         "source_id": e["source_id"],
                         "page": e["page"],
-                        "content": e["document"] if isinstance(e["document"], str) and e["document"].strip() else e["snippet"],
+                        "content": citation_content,
+                        "snippet": citation_content,  # Ensure snippet is populated
                         "metadata": {
                             "source_type": "uploaded_document",
-                            "confidence": "high" if len(e.get("document", "")) > 100 else "medium",
+                            "confidence": "high" if len(citation_content) > 100 else "medium",
                             "unique_id": len(evidence_with_unique_ids) + 1
                         }
                     })

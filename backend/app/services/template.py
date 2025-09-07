@@ -4,7 +4,21 @@ import uuid
 import os
 from langchain_google_genai import ChatGoogleGenerativeAI
 
-templates = [
+def load_templates_from_file():
+    """Load templates from file if it exists."""
+    templates_file = "templates.json"
+    if os.path.exists(templates_file):
+        try:
+            with open(templates_file, 'r', encoding='utf-8') as f:
+                loaded_templates = json.load(f)
+                print(f"📁 Loaded {len(loaded_templates)} templates from {templates_file}")
+                return loaded_templates
+        except Exception as e:
+            print(f"⚠️ Warning: Could not load templates from file: {e}")
+    return None
+
+# Initialize templates - try to load from file first, otherwise use defaults
+default_templates = [
     {
         "id": "default", 
         "name": "Default Template",
@@ -54,6 +68,10 @@ templates = [
         "created_at": "2024-01-01T00:00:00Z"
     }
 ]
+
+# Load templates from file or use defaults
+loaded_templates = load_templates_from_file()
+templates = loaded_templates if loaded_templates is not None else default_templates
 
 def list_templates() -> List[Dict]:
     return templates
@@ -264,3 +282,38 @@ def suggest_template(query: str, source_context: Optional[Dict] = None, availabl
             "error": str(e),
             "message": "Used default template due to an error in suggestion generation."
         }
+
+def save_template(template: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Save a custom template to the templates list and persist to file.
+    """
+    try:
+        # Add the template to the global templates list
+        templates.append(template)
+        
+        # Save to file for persistence
+        templates_file = "templates.json"
+        try:
+            with open(templates_file, 'w', encoding='utf-8') as f:
+                json.dump(templates, f, indent=2, ensure_ascii=False)
+            print(f"💾 Templates saved to {templates_file}")
+        except Exception as file_error:
+            print(f"⚠️ Warning: Could not save templates to file: {file_error}")
+        
+        return {
+            "status": "success",
+            "message": f"Template '{template['name']}' saved successfully",
+            "template": template
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Failed to save template: {str(e)}",
+            "error": str(e)
+        }
+
+def get_all_templates() -> List[Dict[str, Any]]:
+    """
+    Get all available templates.
+    """
+    return templates

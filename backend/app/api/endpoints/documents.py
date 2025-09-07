@@ -16,6 +16,52 @@ class DocumentResponse(BaseModel):
     source_id: str
     status: str
 
+@router.get("/health")
+async def health_check():
+    """Health check endpoint"""
+    return {"status": "healthy", "message": "Backend is running"}
+
+@router.post("/transcribe-audio")
+async def transcribe_audio(audio: UploadFile = File(...)):
+    """
+    Transcribe audio from voice input using Deepgram
+    """
+    try:
+        # Save the uploaded audio file temporarily
+        import tempfile
+        import os
+        
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
+            content = await audio.read()
+            tmp.write(content)
+            tmp_path = tmp.name
+        
+        # Use the same transcription function as video processing
+        from app.services.parser import extract_video_audio
+        result = extract_video_audio(tmp_path)
+        
+        # Clean up temp file
+        os.remove(tmp_path)
+        
+        if result and len(result) > 0 and 'text' in result[0]:
+            return {
+                "status": "success",
+                "transcript": result[0]['text'],
+                "word_count": result[0].get('word_count', 0),
+                "duration": result[0].get('duration', 0)
+            }
+        else:
+            return {
+                "status": "error",
+                "message": "No speech detected in audio"
+            }
+            
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Transcription failed: {str(e)}"
+        }
+
 @router.post("/upload", response_model=DocumentResponse)
 async def upload_document(
     file: UploadFile = File(...),
@@ -33,7 +79,7 @@ async def upload_document(
         file_ext = file.filename.lower().split('.')[-1] if '.' in file.filename else ''
         
         # Process based on file type using the unified parser
-        if file_ext in ['pdf', 'pptx', 'ppt', 'xlsx', 'xls', 'txt', 'png', 'jpg', 'jpeg']:
+        if file_ext in ['pdf', 'pptx', 'ppt', 'xlsx', 'xls', 'txt', 'png', 'jpg', 'jpeg', 'mp4', 'avi', 'mov', 'mkv', 'wav', 'mp3', 'm4a', 'flac']:
             from app.services.parser import parse_file
             # Use the updated parser that handles all file types
             parsed_data = await parse_file(file)

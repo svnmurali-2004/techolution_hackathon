@@ -18,11 +18,14 @@ def export_report(report_id: str, format: str):
         title = section["title"]
         text_content = ""
         for item in section["content"]:
-            text_content += item["text"] + "\n\n"
+            # Clean text content to handle Unicode properly
+            clean_text = str(item["text"]).encode('utf-8', errors='ignore').decode('utf-8')
+            text_content += clean_text + "\n\n"
             if item.get("citations"):
                 text_content += "Citations:\n"
                 for citation in item["citations"]:
-                    text_content += f"- {citation.get('source_id')}, Page {citation.get('page')}: {citation.get('snippet', '')[:100]}...\n"
+                    clean_snippet = str(citation.get('snippet', '')).encode('utf-8', errors='ignore').decode('utf-8')
+                    text_content += f"- {citation.get('source_id')}, Page {citation.get('page')}: {clean_snippet[:100]}...\n"
         content[title] = text_content
     if format == "docx":
         doc = Document()
