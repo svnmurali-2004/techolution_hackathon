@@ -44,6 +44,61 @@ def extract_image(file_path):
     text = pytesseract.image_to_string(file_path)
     return [{"text": text}]
 
+def extract_docx(file_path):
+    """
+    Extract text from Word documents (.doc, .docx)
+    """
+    try:
+        from docx import Document
+        doc = Document(file_path)
+        text = ""
+        for paragraph in doc.paragraphs:
+            text += paragraph.text + "\n"
+        return [{"text": text.strip()}]
+    except Exception as e:
+        return [{"error": f"Failed to extract DOCX: {str(e)}"}]
+
+def extract_archive(file_path):
+    """
+    Extract text from archive files (zip, rar, etc.)
+    """
+    try:
+        import zipfile
+        import tarfile
+        import rarfile
+        
+        text_content = []
+        file_ext = os.path.splitext(file_path)[1].lower()
+        
+        if file_ext == ".zip":
+            with zipfile.ZipFile(file_path, 'r') as zip_ref:
+                for file_info in zip_ref.filelist:
+                    if not file_info.is_dir() and file_info.filename.endswith(('.txt', '.pdf', '.docx')):
+                        try:
+                            content = zip_ref.read(file_info.filename)
+                            if file_info.filename.endswith('.txt'):
+                                text_content.append(f"[From {file_info.filename}]: {content.decode('utf-8', errors='ignore')}")
+                        except:
+                            continue
+        elif file_ext in [".tar", ".gz"]:
+            with tarfile.open(file_path, 'r:*') as tar_ref:
+                for member in tar_ref.getmembers():
+                    if member.isfile() and member.name.endswith(('.txt', '.pdf', '.docx')):
+                        try:
+                            content = tar_ref.extractfile(member).read()
+                            if member.name.endswith('.txt'):
+                                text_content.append(f"[From {member.name}]: {content.decode('utf-8', errors='ignore')}")
+                        except:
+                            continue
+        
+        if text_content:
+            return [{"text": "\n\n".join(text_content)}]
+        else:
+            return [{"text": f"Archive {os.path.basename(file_path)} contains no extractable text files"}]
+            
+    except Exception as e:
+        return [{"error": f"Failed to extract archive: {str(e)}"}]
+
 def extract_video_audio(file_path):
     """
     Extract transcript from video/audio files using Deepgram API

@@ -68,7 +68,7 @@ async def upload_document(
     source_id: Optional[str] = Form(None)
 ):
     """
-    Upload and ingest a document
+    Upload and ingest a single document
     """
     try:
         # Generate a source ID if not provided
@@ -114,6 +114,148 @@ async def upload_document(
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Document ingestion failed: {str(e)}")
+
+@router.post("/upload-multiple")
+async def upload_multiple_documents(
+    files: List[UploadFile] = File(...),
+    session_id: Optional[str] = Form(None)
+):
+    """
+    Upload and ingest multiple documents of different types simultaneously
+    """
+    try:
+        if not files:
+            raise HTTPException(status_code=400, detail="No files provided")
+        
+        # Limit the number of files to prevent overload
+        if len(files) > 20:
+            raise HTTPException(status_code=400, detail="Maximum 20 files allowed per upload")
+        
+        # Generate session ID if not provided
+        if not session_id:
+            session_id = f"session_{str(uuid.uuid4())[:8]}"
+        
+        upload_results = []
+        successful_uploads = 0
+        failed_uploads = 0
+        total_size = 0
+        
+        # Supported file types and their categories
+        supported_types = {
+            'documents': ['pdf', 'doc', 'docx', 'txt', 'rtf'],
+            'presentations': ['ppt', 'pptx'],
+            'spreadsheets': ['xls', 'xlsx', 'csv'],
+            'images': ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'tiff'],
+            'videos': ['mp4', 'avi', 'mov', 'mkv', 'wmv', 'flv'],
+            'audio': ['mp3', 'wav', 'm4a', 'flac', 'aac', 'ogg'],
+            'archives': ['zip', 'rar', '7z', 'tar', 'gz']
+        }
+        
+        # Process each file
+        for file in files:
+            try:
+                # Validate file size (max 100MB per file)
+                file_content = await file.read()
+                file_size = len(file_content)
+                total_size += file_size
+                
+                if file_size > 100 * 1024 * 1024:  # 100MB limit
+                    upload_results.append({
+                        "filename": file.filename,
+                        "status": "failed",
+                        "error": "File too large (max 100MB per file)",
+                        "size": file_size
+                    })
+                    failed_uploads += 1
+                    continue
+                
+                # Reset file pointer for processing
+                await file.seek(0)
+                
+                # Check file extension
+                file_ext = file.filename.lower().split('.')[-1] if '.' in file.filename else ''
+                
+                # Determine file category
+                file_category = "unknown"
+                for category, extensions in supported_types.items():
+                    if file_ext in extensions:
+                        file_category = category
+                        break
+                
+                # Generate unique source ID for this file
+                source_id = f"uploaded_{file.filename}_{str(uuid.uuid4())[:8]}"
+                
+                # Process based on file type
+                if file_ext in ['pdf', 'pptx', 'ppt', 'xlsx', 'xls', 'txt', 'png', 'jpg', 'jpeg', 'mp4', 'avi', 'mov', 'mkv', 'wav', 'mp3', 'm4a', 'flac']:
+                    from app.services.parser import parse_file
+                    parsed_data = await parse_file(file)
+                    
+                    if parsed_data.get('status') == 'parsed':
+                        upload_results.append({
+                            "filename": file.filename,
+                            "source_id": source_id,
+                            "status": "success",
+                            "category": file_category,
+                            "size": file_size,
+                            "message": f"Successfully processed {file_category} file"
+                        })
+                        successful_uploads += 1
+                    else:
+                        upload_results.append({
+                            "filename": file.filename,
+                            "status": "failed",
+                            "error": parsed_data.get('error', 'Unknown parsing error'),
+                            "size": file_size
+                        })
+                        failed_uploads += 1
+                else:
+                    # Handle unsupported file types
+                    upload_results.append({
+                        "filename": file.filename,
+                        "status": "failed",
+                        "error": f"Unsupported file type: {file_ext}",
+                        "size": file_size
+                    })
+                    failed_uploads += 1
+                    
+            except Exception as file_error:
+                print(f"Error processing file {file.filename}: {file_error}")
+                upload_results.append({
+                    "filename": file.filename,
+                    "status": "failed",
+                    "error": str(file_error),
+                    "size": 0
+                })
+                failed_uploads += 1
+        
+        # Check total size limit (max 500MB total)
+        if total_size > 500 * 1024 * 1024:  # 500MB total limit
+            raise HTTPException(status_code=400, detail="Total file size exceeds 500MB limit")
+        
+        # Get final document count
+        status = diagnose_collection()
+        doc_count = status.get("document_count", 0)
+        
+        # Prepare summary
+        summary = {
+            "session_id": session_id,
+            "total_files": len(files),
+            "successful_uploads": successful_uploads,
+            "failed_uploads": failed_uploads,
+            "total_size": total_size,
+            "document_count": doc_count,
+            "files": upload_results
+        }
+        
+        return {
+            "status": "completed",
+            "message": f"Multi-file upload completed. {successful_uploads} files processed successfully, {failed_uploads} failed.",
+            "summary": summary
+        }
+        
+    except Exception as e:
+        print(f"Error in multi-file upload: {e}")
+        raise HTTPException(status_code=500, detail=f"Multi-file upload failed: {str(e)}")
 
 @router.get("/status")
 async def get_collection_status():
@@ -196,19 +338,36 @@ async def get_document_samples():
 @router.post("/session/start")
 async def start_new_session():
     """
-    Start a new chat session by clearing all previous documents
+    Start a new chat session - clears chat interface but keeps documents for report generation
+    """
+    try:
+        # Just return a new session ID without clearing the collection
+        # The collection should remain intact for report generation
+        return {
+            "status": "success", 
+            "message": "New chat session started - documents preserved for report generation",
+            "session_id": str(uuid.uuid4()),
+            "details": "Chat interface cleared, documents remain available"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to start new session: {str(e)}")
+
+@router.post("/session/reset-all")
+async def reset_all_documents():
+    """
+    Reset everything - clears both chat interface AND all documents (complete reset)
     """
     try:
         from app.services.generator import reset_collection
         result = reset_collection()
         return {
             "status": "success", 
-            "message": "New session started - all previous documents cleared",
+            "message": "Complete reset - all documents and chat cleared",
             "session_id": str(uuid.uuid4()),
             "details": result
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to start new session: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to reset all documents: {str(e)}")
 
 @router.post("/collection/recreate")
 async def recreate_collection():
@@ -219,12 +378,28 @@ async def recreate_collection():
         from app.services.generator import recreate_collection
         result = recreate_collection()
         return {
-            "status": "success", 
+            "status": "success",
             "message": "Collection recreated successfully",
             "details": result
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to recreate collection: {str(e)}")
+
+@router.post("/collection/recover")
+async def recover_collection():
+    """
+    Recover a corrupted ChromaDB collection
+    """
+    try:
+        from app.services.generator import recover_collection
+        result = recover_collection()
+        return {
+            "status": "success",
+            "message": "Collection recovered successfully",
+            "details": "Collection has been recreated and is ready for use"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to recover collection: {str(e)}")
 
 @router.get("/session/current")
 async def get_current_session_documents():

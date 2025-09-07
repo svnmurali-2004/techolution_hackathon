@@ -9,6 +9,7 @@ import os
 import uuid
 import json
 import asyncio
+import datetime
 from typing import Dict, Any, Optional, List
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
@@ -76,7 +77,22 @@ class AgenticAISystem:
             try:
                 all_docs = collection.get()
             except Exception as e:
-                return f"Error retrieving documents from collection: {str(e)}. The collection may have been corrupted. Please try uploading documents again."
+                print(f"❌ Collection access failed: {e}")
+                # Try to recover the collection
+                try:
+                    from app.services.generator import recover_collection
+                    recover_collection()
+                    all_docs = collection.get()
+                    print(f"✅ Collection recovered successfully")
+                except Exception as e2:
+                    print(f"❌ Collection recovery failed: {e2}")
+                    # Try a complete reset as last resort
+                    try:
+                        from app.services.generator import reset_collection
+                        reset_collection()
+                        return "Collection was corrupted and has been reset. Please upload your documents again to continue."
+                    except Exception as e3:
+                        return f"Collection is severely corrupted and cannot be recovered. Error: {str(e3)}. Please restart the server or contact support."
             
             if not all_docs or not all_docs.get('documents'):
                 return "No document content found in collection."
@@ -138,7 +154,7 @@ class AgenticAISystem:
         except Exception as e:
             return f"Error analyzing documents: {str(e)}"
     
-    def generate_report(self, input_text: str) -> str:
+    def generate_report(self, input_text: str, context: Optional[Dict[str, Any]] = None) -> str:
         """Generate comprehensive reports from documents with intelligent template suggestions."""
         try:
             if not self.documents_processed:
@@ -149,27 +165,43 @@ class AgenticAISystem:
             samples_data = get_document_samples_for_analysis()
             samples = samples_data.get("samples", [])
             
-            # First, suggest the best existing template
-            suggested_template = self._suggest_best_template(input_text, samples)
+            # Check if user has selected a specific template
+            selected_template = None
+            if context:
+                selected_template = context.get("selected_template") or context.get("current_template")
+                print(f"🔍 Template context check: selected_template={context.get('selected_template') is not None}, current_template={context.get('current_template') is not None}")
+                if selected_template:
+                    print(f"🎯 Found selected template: {selected_template.get('name', 'Unknown')} with sections: {selected_template.get('template', [])}")
+                else:
+                    print(f"⚠️ No selected template found in context: {context.keys()}")
             
-            # Determine if we need a custom template
-            template_decision = self._decide_template_approach(input_text, samples, suggested_template)
-            
-            if template_decision["use_custom"]:
-                # Create and save custom template
-                custom_template = self._create_custom_template(input_text, samples)
-                sections_list = custom_template["template"]
-                template_name = custom_template["name"]
-                
-                # Save the custom template
-                self._save_custom_template(custom_template)
-                
-                response = f"🎯 **Perfect! I've created a custom template for your needs.**\n\n**Template:** {template_name}\n**Sections:** {', '.join(sections_list)}\n\n"
+            if selected_template:
+                # Use the user-selected template
+                sections_list = selected_template.get("template", ["Executive Summary", "Key Findings", "Recommendations"])
+                template_name = selected_template.get("name", "Selected Template")
+                response = f"🎯 **Using your selected template!**\n\n**Template:** {template_name}\n**Sections:** {', '.join(sections_list)}\n\n"
+                print(f"🎯 Using user-selected template: {template_name} with sections: {sections_list}")
             else:
-                # Use suggested template
-                sections_list = suggested_template["template"]
-                template_name = suggested_template["name"]
-                response = f"💡 **I found the perfect template for you!**\n\n**Recommended Template:** {template_name}\n**Sections:** {', '.join(sections_list)}\n\n"
+                # Try to extract template from conversation memory first
+                extracted_template = self._extract_template_from_conversation()
+                
+                if extracted_template:
+                    # Use the template from conversation
+                    sections_list = extracted_template["template"]
+                    template_name = extracted_template["name"]
+                    response = f"🎯 **Using Template from Our Conversation!**\n\n**Template:** {template_name}\n**Sections:** {', '.join(sections_list)}\n\n"
+                    print(f"🎯 Using extracted template from conversation: {template_name} with sections: {sections_list}")
+                else:
+                    # Fallback: Ask the model directly for the best template
+                    ai_generated_template = self._ask_model_for_template(input_text, samples)
+                    sections_list = ai_generated_template["template"]
+                    template_name = ai_generated_template["name"]
+                    
+                    # Save the AI-generated template
+                    self._save_custom_template(ai_generated_template)
+                    
+                    response = f"🤖 **AI-Generated Perfect Template!**\n\n**Template:** {template_name}\n**Sections:** {', '.join(sections_list)}\n\n"
+                    print(f"🤖 AI generated template: {template_name} with sections: {sections_list}")
             
             # Generate the report
             from app.services.generator import generate_report_from_query
@@ -197,6 +229,9 @@ class AgenticAISystem:
             from app.services.template import get_all_templates
             templates = get_all_templates()
             
+            if not templates:
+                return {"id": "default", "name": "Default Template", "template": ["Executive Summary", "Key Findings", "Analysis", "Recommendations"]}
+            
             # Create a prompt to analyze and suggest the best template
             samples_text = "\n".join([sample.get('content_preview', str(sample))[:200] for sample in samples[:3]])
             templates_text = "\n".join([f"- {t['name']}: {t['description']} (Sections: {', '.join(t['template'])})" for t in templates])
@@ -212,18 +247,43 @@ Document Content Samples:
 Available Templates:
 {templates_text}
 
-Respond with JSON: {{"template_id": "id", "confidence": 0.8, "reason": "explanation"}}
+IMPORTANT: Choose the template that best matches the user's request. If the user mentions specific sections or types of analysis, prioritize templates that include those sections.
+
+Respond with ONLY valid JSON (no other text):
+{{"template_id": "id", "confidence": 0.8, "reason": "explanation"}}
 """
             
             response = self.llm.invoke([HumanMessage(content=suggestion_prompt)])
-            suggestion = json.loads(response.content.strip())
+            response_content = response.content.strip()
             
-            # Find the suggested template
-            suggested_template = next((t for t in templates if t["id"] == suggestion["template_id"]), templates[0])
+            # Clean up response to extract JSON
+            if "```json" in response_content:
+                start = response_content.find("```json") + 7
+                end = response_content.find("```", start)
+                response_content = response_content[start:end].strip()
+            elif "```" in response_content:
+                start = response_content.find("```") + 3
+                end = response_content.find("```", start)
+                response_content = response_content[start:end].strip()
             
-            return suggested_template
+            try:
+                suggestion = json.loads(response_content)
+                # Find the suggested template
+                suggested_template = next((t for t in templates if t["id"] == suggestion["template_id"]), None)
+                
+                if suggested_template:
+                    print(f"🎯 Selected template: {suggested_template['name']} with sections: {suggested_template['template']}")
+                    return suggested_template
+                else:
+                    print(f"⚠️ Template ID {suggestion.get('template_id')} not found, using first available template")
+                    return templates[0]
+                    
+            except json.JSONDecodeError as e:
+                print(f"⚠️ JSON parsing failed: {e}, using first available template")
+                return templates[0]
             
         except Exception as e:
+            print(f"❌ Error in template suggestion: {e}")
             # Fallback to default template
             from app.services.template import get_all_templates
             templates = get_all_templates()
@@ -316,6 +376,131 @@ Respond with JSON:
             print(f"💾 Saved custom template: {template['name']}")
         except Exception as e:
             print(f"❌ Error saving template: {e}")
+    
+    def _extract_template_from_conversation(self) -> Optional[Dict]:
+        """Extract template information from conversation memory."""
+        try:
+            # Look through conversation memory for template information
+            for message in reversed(self.conversation_memory[-10:]):  # Check last 10 messages
+                content = message.get("content", "")
+                
+                # Look for "Template Saved Successfully" messages
+                if "Template Saved Successfully" in content and "Template Name:" in content:
+                    print(f"🔍 Found template save message in conversation: {content[:100]}...")
+                    
+                    # Extract template information using regex
+                    import re
+                    
+                    # Extract template name
+                    name_match = re.search(r'Template Name:\*\*\s*([^\n]+)', content)
+                    template_name = name_match.group(1).strip() if name_match else "Extracted Template"
+                    
+                    # Extract sections
+                    sections_match = re.search(r'Sections:\*\*\s*([^\n]+)', content)
+                    if sections_match:
+                        sections_text = sections_match.group(1).strip()
+                        # Split by comma and clean up
+                        sections = [s.strip() for s in sections_text.split(',')]
+                        
+                        # Extract description if available
+                        desc_match = re.search(r'Description:\*\*\s*([^\n]+)', content)
+                        description = desc_match.group(1).strip() if desc_match else f"Template extracted from conversation: {template_name}"
+                        
+                        # Extract category if available
+                        category_match = re.search(r'Category:\*\*\s*([^\n]+)', content)
+                        category = category_match.group(1).strip() if category_match else "Extracted"
+                        
+                        extracted_template = {
+                            "id": f"extracted_{uuid.uuid4().hex[:8]}",
+                            "name": template_name,
+                            "description": description,
+                            "template": sections,
+                            "category": category,
+                            "created_at": datetime.datetime.now().isoformat() + "Z"
+                        }
+                        
+                        print(f"✅ Extracted template from conversation: {template_name} with {len(sections)} sections")
+                        return extracted_template
+            
+            print("⚠️ No template found in conversation memory")
+            return None
+            
+        except Exception as e:
+            print(f"❌ Error extracting template from conversation: {e}")
+            return None
+    
+    def _ask_model_for_template(self, input_text: str, samples: List[Dict]) -> Dict:
+        """Ask the model directly for the best template based on user request and documents."""
+        try:
+            samples_text = "\n".join([sample.get('content_preview', str(sample))[:300] for sample in samples[:3]])
+            
+            template_prompt = f"""
+Create the perfect report template based on the user's request and document content.
+
+User Request: "{input_text}"
+
+Document Content:
+{samples_text}
+
+Create a template that:
+1. Directly addresses the user's specific request
+2. Is appropriate for the document content type
+3. Has 4-6 logical sections
+4. Follows professional report structure
+5. Uses section names that match the user's intent
+
+Respond with ONLY valid JSON (no other text):
+{{
+    "name": "Template Name",
+    "description": "Brief description",
+    "template": ["Section1", "Section2", "Section3", "Section4"],
+    "category": "Category"
+}}
+"""
+            
+            response = self.llm.invoke([HumanMessage(content=template_prompt)])
+            response_content = response.content.strip()
+            
+            # Clean up response to extract JSON
+            if "```json" in response_content:
+                start = response_content.find("```json") + 7
+                end = response_content.find("```", start)
+                response_content = response_content[start:end].strip()
+            elif "```" in response_content:
+                start = response_content.find("```") + 3
+                end = response_content.find("```", start)
+                response_content = response_content[start:end].strip()
+            
+            try:
+                template_data = json.loads(response_content)
+                
+                # Add metadata
+                template_data["id"] = f"ai_generated_{uuid.uuid4().hex[:8]}"
+                template_data["created_at"] = datetime.datetime.now().isoformat() + "Z"
+                
+                return template_data
+                
+            except json.JSONDecodeError as e:
+                print(f"⚠️ JSON parsing failed: {e}, using fallback template")
+                return {
+                    "id": f"fallback_{uuid.uuid4().hex[:8]}",
+                    "name": "AI-Generated Report Template",
+                    "description": "Template generated based on your request",
+                    "template": ["Executive Summary", "Key Findings", "Analysis", "Recommendations"],
+                    "category": "AI Generated",
+                    "created_at": datetime.datetime.now().isoformat() + "Z"
+                }
+            
+        except Exception as e:
+            print(f"❌ Error asking model for template: {e}")
+            return {
+                "id": f"error_fallback_{uuid.uuid4().hex[:8]}",
+                "name": "Default Report Template",
+                "description": "Fallback template due to error",
+                "template": ["Executive Summary", "Key Findings", "Recommendations"],
+                "category": "Fallback",
+                "created_at": datetime.datetime.now().isoformat() + "Z"
+            }
     
     def _generate_curious_response(self, command: str) -> str:
         """Generate a curious, engaging response that's appropriately sized."""
@@ -522,7 +707,7 @@ Respond in a curious, helpful tone. Keep it concise but engaging.
                 doc_count = status.get("document_count", 0)
                 
                 if doc_count > 0:
-                    result = self.generate_report(command)
+                    result = self.generate_report(command, context)
                 else:
                     result = self._generate_curious_response(command)
             
@@ -597,7 +782,7 @@ What's your take on this? I'm excited to help you create something amazing! 🚀
         self.finalized_template = self._create_finalized_template()
         
         # Generate the report
-        result = self.generate_report("Generate report using default template immediately")
+        result = self.generate_report("Generate report using default template immediately", context)
         
         # Reset state for next time
         self.template_finalization_state = "none"
@@ -615,7 +800,7 @@ What's your take on this? I'm excited to help you create something amazing! 🚀
             self.finalized_template = self._create_finalized_template()
             
             # Generate the report
-            result = self.generate_report("Generate report using finalized template")
+            result = self.generate_report("Generate report using finalized template", context)
             
             # Reset state for next time
             self.template_finalization_state = "none"
@@ -629,7 +814,7 @@ What's your take on this? I'm excited to help you create something amazing! 🚀
             self.finalized_template = self._create_summary_template()
             
             # Generate the report
-            result = self.generate_report("Generate summary report using summary template")
+            result = self.generate_report("Generate summary report using summary template", context)
             
             # Reset state for next time
             self.template_finalization_state = "none"
@@ -817,6 +1002,8 @@ class AgenticRequest(BaseModel):
     command: str
     context: Optional[Dict[str, Any]] = None
     mode: Optional[str] = "auto"
+    selected_template: Optional[Dict[str, Any]] = None
+    current_template: Optional[Dict[str, Any]] = None
 
 class AgenticResponse(BaseModel):
     response: str
@@ -885,17 +1072,28 @@ async def agentic_chat(request: AgenticRequest):
     try:
         print(f"🤖 Agentic Chat Request: {request.command}")
         print(f"🤖 Context: {request.context}")
+        print(f"🤖 Selected Template: {request.selected_template}")
+        print(f"🤖 Current Template: {request.current_template}")
         
         if not request.command.strip():
             raise HTTPException(status_code=400, detail="Message cannot be empty")
         
-        # Build enhanced command with context
+        # Build enhanced command with context and template information
         enhanced_command = request.command
         if request.context:
             context_info = f"Context: {request.context}"
             enhanced_command = f"{request.command}\n\n{context_info}"
         
-        result = agentic_system.execute_command(enhanced_command, request.context)
+        # Add template information to context
+        enhanced_context = request.context or {}
+        if request.selected_template:
+            enhanced_context["selected_template"] = request.selected_template
+            print(f"🎯 Using selected template: {request.selected_template.get('name', 'Unknown')}")
+        if request.current_template:
+            enhanced_context["current_template"] = request.current_template
+            print(f"🎯 Using current template: {request.current_template.get('name', 'Unknown')}")
+        
+        result = agentic_system.execute_command(enhanced_command, enhanced_context)
         
         # Broadcast to WebSocket connections
         await agentic_system.broadcast_to_websockets(f"Agent Response: {result}")

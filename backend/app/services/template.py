@@ -12,9 +12,18 @@ def load_templates_from_file():
             with open(templates_file, 'r', encoding='utf-8') as f:
                 loaded_templates = json.load(f)
                 print(f"📁 Loaded {len(loaded_templates)} templates from {templates_file}")
-                return loaded_templates
+                # Validate that loaded templates have required fields
+                valid_templates = []
+                for template in loaded_templates:
+                    if isinstance(template, dict) and "id" in template and "name" in template and "template" in template:
+                        valid_templates.append(template)
+                    else:
+                        print(f"⚠️ Skipping invalid template: {template}")
+                return valid_templates
         except Exception as e:
             print(f"⚠️ Warning: Could not load templates from file: {e}")
+    else:
+        print(f"📁 Templates file {templates_file} does not exist, will create with defaults")
     return None
 
 # Initialize templates - try to load from file first, otherwise use defaults
@@ -74,6 +83,17 @@ loaded_templates = load_templates_from_file()
 templates = loaded_templates if loaded_templates is not None else default_templates
 
 def list_templates() -> List[Dict]:
+    """List all available templates, refreshing from file if needed."""
+    global templates
+    # Try to reload from file to ensure we have the latest templates
+    try:
+        loaded_templates = load_templates_from_file()
+        if loaded_templates is not None:
+            templates = loaded_templates
+            print(f"🔄 Refreshed templates from file: {len(templates)} templates")
+    except Exception as e:
+        print(f"⚠️ Could not refresh templates from file: {e}")
+    
     return templates
 
 def create_template(template_json: Dict) -> Dict:
@@ -288,6 +308,19 @@ def save_template(template: Dict[str, Any]) -> Dict[str, Any]:
     Save a custom template to the templates list and persist to file.
     """
     try:
+        # Ensure template has required fields
+        if "id" not in template:
+            template["id"] = f"custom_{uuid.uuid4().hex[:8]}"
+        if "name" not in template:
+            template["name"] = f"Custom Template {len(templates) + 1}"
+        if "description" not in template:
+            template["description"] = "User-created custom template"
+        if "category" not in template:
+            template["category"] = "Custom"
+        if "created_at" not in template:
+            from datetime import datetime
+            template["created_at"] = datetime.now().isoformat() + "Z"
+        
         # Add the template to the global templates list
         templates.append(template)
         
@@ -296,9 +329,14 @@ def save_template(template: Dict[str, Any]) -> Dict[str, Any]:
         try:
             with open(templates_file, 'w', encoding='utf-8') as f:
                 json.dump(templates, f, indent=2, ensure_ascii=False)
-            print(f"💾 Templates saved to {templates_file}")
+            print(f"💾 Templates saved to {templates_file} - Total templates: {len(templates)}")
         except Exception as file_error:
             print(f"⚠️ Warning: Could not save templates to file: {file_error}")
+            return {
+                "status": "error",
+                "message": f"Template added to memory but failed to save to file: {str(file_error)}",
+                "template": template
+            }
         
         return {
             "status": "success",
@@ -306,6 +344,7 @@ def save_template(template: Dict[str, Any]) -> Dict[str, Any]:
             "template": template
         }
     except Exception as e:
+        print(f"❌ Error saving template: {e}")
         return {
             "status": "error",
             "message": f"Failed to save template: {str(e)}",
@@ -317,3 +356,9 @@ def get_all_templates() -> List[Dict[str, Any]]:
     Get all available templates.
     """
     return templates
+
+def get_template_count() -> int:
+    """
+    Get the count of available templates.
+    """
+    return len(templates)

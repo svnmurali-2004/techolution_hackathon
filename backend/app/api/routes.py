@@ -47,10 +47,17 @@ router.include_router(
 
 @router.post('/upload')
 async def upload_file(file: UploadFile = File(...), source_id: Optional[str] = Form(None)):
-    """Upload a file and get source_id for future reference"""
+    """Upload a single file and get source_id for future reference"""
     # Use the documents endpoint for proper document handling
     from app.api.endpoints.documents import upload_document
     return await upload_document(file, source_id)
+
+@router.post('/upload-multiple')
+async def upload_multiple_files(files: List[UploadFile] = File(...), session_id: Optional[str] = Form(None)):
+    """Upload multiple files of different types simultaneously"""
+    # Use the documents endpoint for proper multi-file handling
+    from app.api.endpoints.documents import upload_multiple_documents
+    return await upload_multiple_documents(files, session_id)
 
 @router.get('/sources')
 async def get_available_sources():

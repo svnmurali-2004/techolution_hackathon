@@ -10,6 +10,12 @@ async def list_templates():
     """List all available templates"""
     return template.list_templates()
 
+@router.get("/count", response_model=Dict)
+async def get_template_count():
+    """Get the count of available templates"""
+    count = template.get_template_count()
+    return {"count": count, "templates": count}
+
 @router.post("/create", response_model=Dict)
 async def create_template(template_data: Dict = Body(...)):
     """Create a new template"""

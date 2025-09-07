@@ -113,5 +113,101 @@
     ],
     "category": "Custom",
     "created_at": "9d27186e-b8b3-4600-b58a-8cf4f163b9eb"
+  },
+  {
+    "name": "AI Project Analysis Report",
+    "description": "A structured template for documenting the analysis, capabilities, and outcomes of an AI-powered project, suitable for consulting and strategic deliverables.",
+    "template": [
+      "Executive Summary",
+      "Project Context & Motivation",
+      "Scope Definition",
+      "Analysis & Findings",
+      "System Capabilities & Features",
+      "Recommendations & Next Steps",
+      "Conclusion",
+      "Appendices & Documentation"
+    ],
+    "category": "AI/Tech Project",
+    "id": "custom_b208c111",
+    "created_at": "2025-09-07T17:51:10.481449Z"
+  },
+  {
+    "name": "AI Project Proposal",
+    "description": "A template for outlining AI-powered project proposals, including problem context, proposed solution, and key features.",
+    "template": [
+      "Problem Statement",
+      "Context & Motivation",
+      "Proposed Solution Overview",
+      "Key Features & Capabilities",
+      "Iteration & Versioning Strategy",
+      "Integration & Handoff",
+      "Expected Impact & Benefits"
+    ],
+    "category": "Technical Proposal",
+    "id": "custom_801af2ce",
+    "created_at": "2025-09-07T18:24:15.957181Z"
+  },
+  {
+    "name": "AI Project Proposal & Problem Statement Template",
+    "description": "A comprehensive template designed for outlining AI-powered project proposals or detailed problem statements, ideal for hackathons, initial ideation, or technical project documentation based on the provided content.",
+    "template": [
+      "Project Title & Executive Summary",
+      "Context & Problem Definition",
+      "Proposed Solution & Key Capabilities",
+      "Technical Considerations & Development Roadmap",
+      "Expected Impact & Future Enhancements"
+    ],
+    "category": "Technical Proposal",
+    "id": "ai_generated_73beb9fd",
+    "created_at": "2025-09-07T18:41:50.403172Z"
+  },
+  {
+    "name": "AI Project Report Template",
+    "description": "A comprehensive template for reporting on AI-powered projects, focusing on context, capabilities, and deliverables for strategic analysis.",
+    "template": [
+      "Executive Summary",
+      "Context & Motivation",
+      "Problem Statement & Scope Definition",
+      "System Capabilities & Features",
+      "Key Deliverables & Outputs",
+      "Implementation Approach",
+      "Future Considerations & Roadmap",
+      "Documentation & Support"
+    ],
+    "category": "Technology Report",
+    "id": "custom_c4831e1e",
+    "created_at": "2025-09-07T18:57:26.154021Z"
+  },
+  {
+    "name": "AI-Powered Template Engine Report",
+    "description": "A comprehensive template for reports detailing the design, capabilities, and implementation of an AI-powered template generation engine.",
+    "template": [
+      "Executive Summary",
+      "Introduction & Motivation",
+      "Problem Statement",
+      "System Capabilities & Features",
+      "Scope Definition",
+      "User Interface & Interaction",
+      "Technical Architecture & Logic",
+      "Documentation Plan",
+      "Conclusion & Next Steps"
+    ],
+    "category": "Project Report",
+    "id": "custom_7168aa42",
+    "created_at": "2025-09-07T19:06:03.329215Z"
+  },
+  {
+    "name": "AI-Powered Report Generation Overview",
+    "description": "A comprehensive report outlining the capabilities and benefits of an AI-powered system for generating structured, evidence-backed deliverables, based on the provided context.",
+    "template": [
+      "Executive Summary",
+      "Introduction & Context",
+      "System Capabilities & Features",
+      "Implementation & Workflow",
+      "Conclusion & Recommendations"
+    ],
+    "category": "Technology Overview",
+    "id": "ai_generated_04deee5e",
+    "created_at": "2025-09-07T19:06:29.303496Z"
   }
 ]

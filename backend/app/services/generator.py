@@ -20,17 +20,28 @@ except Exception as e:
     print(f"❌ Error initializing ChromaDB collection: {e}")
     # Try to create a new collection
     try:
-        chroma_client.delete_collection("reports")
+        # Try to delete first (ignore if doesn't exist)
+        try:
+            chroma_client.delete_collection("reports")
+        except:
+            pass
+        
         collection = chroma_client.create_collection("reports")
         print(f"✅ ChromaDB collection 'reports' recreated successfully")
     except Exception as e2:
         print(f"❌ Failed to recreate collection: {e2}")
-        raise e2
+        # Final fallback - try get_or_create again
+        try:
+            collection = chroma_client.get_or_create_collection("reports")
+            print(f"✅ ChromaDB collection 'reports' created with fallback method")
+        except Exception as e3:
+            print(f"❌ All collection initialization methods failed: {e3}")
+            raise e3
 
 # 2. Embedding Model
 embedder = SentenceTransformer("all-MiniLM-L6-v2")
 
-# 3. Collection Diagnostics
+# 3. Collection Diagnostics and Recovery
 def diagnose_collection():
     """Get collection status and document count"""
     try:
@@ -42,13 +53,80 @@ def diagnose_collection():
             "chroma_path": CHROMA_PATH
         }
     except Exception as e:
+        print(f"⚠️ Collection access failed: {e}")
+        # Try to recover the collection
+        try:
+            recover_collection()
+            count = collection.count()
+            return {
+                "collection_name": "reports",
+                "document_count": count,
+                "healthy": True,
+                "chroma_path": CHROMA_PATH,
+                "recovered": True
+            }
+        except Exception as e2:
+            return {
+                "collection_name": "reports", 
+                "document_count": 0,
+                "healthy": False,
+                "error": str(e2),
+                "chroma_path": CHROMA_PATH
+            }
+
+def recover_collection():
+    """Recover a corrupted or missing collection"""
+    global collection
+    try:
+        print("🔄 Attempting to recover collection...")
+        
+        # Try to delete the corrupted collection (ignore if it doesn't exist)
+        try:
+            chroma_client.delete_collection("reports")
+            print("🗑️ Deleted corrupted collection")
+        except Exception as delete_error:
+            print(f"ℹ️ No existing collection to delete: {delete_error}")
+        
+        # Create a fresh collection
+        try:
+            collection = chroma_client.create_collection("reports")
+            print("✅ Created fresh collection")
+        except Exception as create_error:
+            print(f"❌ Failed to create collection: {create_error}")
+            # Try get_or_create as fallback
+            collection = chroma_client.get_or_create_collection("reports")
+            print("✅ Used get_or_create_collection as fallback")
+        
+        return True
+    except Exception as e:
+        print(f"❌ Collection recovery failed: {e}")
+        raise e
+
+def reset_collection():
+    """Reset the entire ChromaDB collection and directory"""
+    global collection
+    try:
+        print("🔄 Resetting entire ChromaDB collection...")
+        
+        # Try to delete the collection
+        try:
+            chroma_client.delete_collection("reports")
+            print("🗑️ Deleted existing collection")
+        except:
+            print("ℹ️ No existing collection to delete")
+        
+        # Create a fresh collection
+        collection = chroma_client.create_collection("reports")
+        print("✅ Created fresh collection")
+        
         return {
-            "collection_name": "reports", 
-            "document_count": 0,
-            "healthy": False,
-            "error": str(e),
-            "chroma_path": CHROMA_PATH
+            "status": "success",
+            "message": "Collection reset successfully",
+            "document_count": 0
         }
+    except Exception as e:
+        print(f"❌ Collection reset failed: {e}")
+        raise e
 
 # 4. Document Ingestion
 def ingest_documents(docs, source_id):
@@ -98,8 +176,25 @@ def ingest_documents(docs, source_id):
 
 # 4. Querying with Citations
 def generate_report_from_query(sections, query, top_k=5, source_filter=None):
-    # Check if collection is empty and warn user instead of auto-seeding
-    if collection.count() == 0:
+    # Check collection health first
+    try:
+        doc_count = collection.count()
+        print(f"✅ Collection is healthy with {doc_count} documents")
+    except Exception as e:
+        print(f"❌ Collection access failed: {e}")
+        # Try to recover the collection
+        try:
+            recover_collection()
+            doc_count = collection.count()
+            print(f"✅ Collection recovered with {doc_count} documents")
+        except Exception as e2:
+            return {
+                "error": f"Collection is corrupted and cannot be recovered: {str(e2)}",
+                "suggestion": "Please try uploading documents again or contact support."
+            }
+    
+    # Check if collection is empty
+    if doc_count == 0:
         print("WARNING: ChromaDB collection is empty. Please upload documents first.")
         return {
             "error": "No documents found in the system. Please upload documents before generating reports.",
