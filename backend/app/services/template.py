@@ -103,7 +103,7 @@ def suggest_template(query: str, source_context: Optional[Dict] = None, availabl
     """
     try:
         # Set up Gemini LLM
-        os.environ["GOOGLE_API_KEY"] = "AIzaSyB_Nqb1kP6NJ0PsfYONs4VxQWsjywc30Rs"
+        os.environ["GOOGLE_API_KEY"] = "AIzaSyDGA_bxmpmbC7NkEaY97GQoZDUtS1N1nLA"
         llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.7)
         
         # Build context based on available information

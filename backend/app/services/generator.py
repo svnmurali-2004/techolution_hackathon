@@ -323,7 +323,7 @@ def generate_report_from_query(sections, query, top_k=5, source_filter=None):
     print(f"Total unique evidence items: {len(all_evidence)}")
     
     # Setup Gemini LLM
-    os.environ["GOOGLE_API_KEY"] = "AIzaSyB_Nqb1kP6NJ0PsfYONs4VxQWsjywc30Rs"  # Replace with your actual key or use env
+    os.environ["GOOGLE_API_KEY"] = "AIzaSyDGA_bxmpmbC7NkEaY97GQoZDUtS1N1nLA"  # Replace with your actual key or use env
     
     # Generate report sections
     report_sections = []

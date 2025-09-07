@@ -37,6 +37,14 @@ router.include_router(
     tags=["reports"]
 )
 
+# Include the agentic AI router
+from app.api.endpoints import agentic
+router.include_router(
+    agentic.router,
+    prefix="/agentic",
+    tags=["agentic-ai"]
+)
+
 @router.post('/upload')
 async def upload_file(file: UploadFile = File(...), source_id: Optional[str] = Form(None)):
     """Upload a file and get source_id for future reference"""

@@ -215,7 +215,7 @@ async def analyze_documents():
             }
         
         # Set up Gemini LLM
-        os.environ["GOOGLE_API_KEY"] = "AIzaSyB_Nqb1kP6NJ0PsfYONs4VxQWsjywc30Rs"
+        os.environ["GOOGLE_API_KEY"] = "AIzaSyDGA_bxmpmbC7NkEaY97GQoZDUtS1N1nLA"
         llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.7)
         
         # Create analysis prompt

@@ -105,7 +105,7 @@ def chat_template(
     
     try:
         # Set up Gemini LLM
-        os.environ["GOOGLE_API_KEY"] = "AIzaSyB_Nqb1kP6NJ0PsfYONs4VxQWsjywc30Rs"
+        os.environ["GOOGLE_API_KEY"] = "AIzaSyDGA_bxmpmbC7NkEaY97GQoZDUtS1N1nLA"
         from langchain_google_genai import ChatGoogleGenerativeAI
         llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.7)
         
@@ -176,8 +176,9 @@ def chat_template(
         
         wants_document_analysis = any(keyword in message.lower() for keyword in [
             "uploaded docs", "uploaded documents", "check documents", "analyze documents",
-            "document summary", "summary", "what's in", "show me", "display", "template",
-            "analyse", "analyze", "analyse my", "analyze my"
+            "what's in", "show me", "display", "analyse", "analyze", "analyse my", "analyze my"
+        ]) and not any(keyword in message.lower() for keyword in [
+            "generate", "create", "make", "build", "report", "template"
         ])
         
         print(f"Document analysis request detected: {wants_document_analysis}")
