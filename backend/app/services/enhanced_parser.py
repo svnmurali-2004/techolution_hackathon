@@ -356,3 +356,4 @@ def get_file_category(filename):
         if ext in info['extensions']:
             return category, info
     return "unknown", {"description": "Unknown file type", "icon": "❓"}
+
